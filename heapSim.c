@@ -22,11 +22,13 @@ int intNumPageSize(int size){
 }
 
 void splitChunk(chunkhead* lower, int size){
-    /*only run if you've already checked that lower->size is greater than size*/
+    if((lower->size)+PAGESIZE < size){
+        return;
+    }
     chunkhead* upper;
     upper = (chunkhead*)((char*)lower+size);
-    upper->size = lower->size - size;
-    lower->size = size;
+    upper->size = lower->size - intNumPageSize(size);
+    lower->size = intNumPageSize(size);
     upper->next = lower->next;
     lower->next = (void*)upper;
     upper->prev = (void*)lower;
@@ -38,14 +40,17 @@ chunkhead* bestFit(int size){
     current = (chunkhead*)startofheap;
     while(current != NULL){
         if(current->info == 0 && current->size <= size){
-
+            splitChunk(current, size);
+            return current;
         }
+        current = current->next;
     }
+    return NULL;
 }
 
 void* mymalloc(unsigned int size){
     chunkhead* current;
-    size = nearestChunkSize(size);
+    size = intNumPageSize(size);
     if(size == 0){
         return NULL;
     }
@@ -64,11 +69,12 @@ void* mymalloc(unsigned int size){
     /*search for best empty fit for size. If not found, allocate more space at the end.*/
     current = bestFit(size);
     if(current == NULL){
+        printf("HERE FOR %d\n", size);
         current = sbrk(size);
         current->size = size;
         current->info = 1;
         current->next = NULL;
-        current->prev = lastchunk;
+        current->prev = (void*)lastchunk;
         lastchunk = current;
     }
     return (void*)((char*)current + sizeof(chunkhead));
@@ -120,10 +126,10 @@ void analyse(){
 
 void main(){
 
-    void* address = mymalloc(1024);
-    void* address2 = mymalloc(3);
+    void* address = mymalloc(4000);
     analyse();
-    //myfree(address);
-    //myfree(address2);
+    void* address2 = mymalloc(8000);
+    analyse();
+    void* address3 = mymalloc(20202);
     analyse();
 }
