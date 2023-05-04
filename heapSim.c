@@ -1,63 +1,80 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #define PAGESIZE 4096
 
 
 typedef struct chunkhead{
     unsigned int size;
     unsigned int info;
-    unsigned char *next, *prev;
+    void *next, *prev;
+    void *largerEmpty;
 }chunkhead;
 
 void* startofheap = NULL;
-unsigned char myheap[1048576];
+chunkhead* lastchunk = NULL;
 
-unsigned char* mymalloc(unsigned int size){
-    int extraSize;
-    int fullSize;
-    int heapLoc;
-    chunkhead* current;
-    /*extraSize is set to the size after first page*/
-    extraSize = size - PAGESIZE + sizeof(chunkhead);
-    /*if extraSize is negative or zero, it should be set to zero.*/
-    /*otherwise, it should be large enough to fill an integer number of pages.*/
-    if(extraSize <= 0){
-        extraSize = 0;
-    }else{
-        extraSize += (PAGESIZE - extraSize%PAGESIZE);
+int intNumPageSize(int size){
+    if(size%PAGESIZE == 0){
+        return size;
     }
-    fullSize = PAGESIZE-sizeof(chunkhead)+extraSize;
-    heapLoc = 0;
-    current = &myheap[0];
-    while(heapLoc < sizeof(myheap)){
-        if(current->info == 0 && current->size >= size){
-            /*the current chunk is available
-            check if the chunk should be split, if so, split*/
-            current->info = 1;
-            /*if current chunk should be split*/
-            if(current->size > fullSize){
-                chunkhead* newChunk;
-                newChunk = malloc(sizeof(chunkhead));
-                newChunk->info = 0;
-                newChunk->prev = current;
-                current->next = newChunk;
-                newChunk->size = current->size - fullSize - sizeof(chunkhead);
-                current->size = fullSize;
-            }
-            setChunkHead(current, &myheap[heapLoc]);
-            return &myheap[heapLoc + sizeof(chunkhead)];
-        }else{
-            if(current->next == NULL){
-                return NULL;
-            }
-            current = current->next;
-            heapLoc += (current->size + sizeof(chunkhead));
-        }
-    }
-    return NULL;
+    return ((size/PAGESIZE)+1)*PAGESIZE;
 }
 
-void myfree(unsigned char* address){
+void splitChunk(chunkhead* lower, int size){
+    /*only run if you've already checked that lower->size is greater than size*/
+    chunkhead* upper;
+    upper = (chunkhead*)((char*)lower+size);
+    upper->size = lower->size - size;
+    lower->size = size;
+    upper->next = lower->next;
+    lower->next = (void*)upper;
+    upper->prev = (void*)lower;
+    upper->info = 0;
+}
+
+chunkhead* bestFit(int size){
+    chunkhead* current;
+    current = (chunkhead*)startofheap;
+    while(current != NULL){
+        if(current->info == 0 && current->size <= size){
+
+        }
+    }
+}
+
+void* mymalloc(unsigned int size){
+    chunkhead* current;
+    size = nearestChunkSize(size);
+    if(size == 0){
+        return NULL;
+    }
+    if(startofheap == NULL){
+        /*base case, allocate space*/
+        startofheap = sbrk(size);
+        current = (chunkhead*)startofheap;
+        lastchunk = current;
+        current->size = size;
+        current->info = 1;
+        current->prev = NULL;
+        current->next = NULL;
+        current->largerEmpty = NULL;
+        return (void*)((char*)(startofheap+sizeof(chunkhead)));
+    }
+    /*search for best empty fit for size. If not found, allocate more space at the end.*/
+    current = bestFit(size);
+    if(current == NULL){
+        current = sbrk(size);
+        current->size = size;
+        current->info = 1;
+        current->next = NULL;
+        current->prev = lastchunk;
+        lastchunk = current;
+    }
+    return (void*)((char*)current + sizeof(chunkhead));
+}
+
+/*void myfree(unsigned char* address){
     chunkhead* addr = (chunkhead*)address;
     chunkhead* chunk;
     chunkhead* tofree;
@@ -77,13 +94,15 @@ void myfree(unsigned char* address){
         if(tofree != &myheap[0])
             free(tofree);
     }
-}
+}*/
 
 void analyse(){
     int chunkCount;
     chunkhead* current;
-    current = &myheap[0];
+    current = (chunkhead*)startofheap;
     chunkCount = 0;
+    printf("\n--------------------------------------\n");
+    printf("Program break location: %p\n", sbrk(0));
     while(current != NULL){
         printf("Chunk #%d:\n", chunkCount);
         printf("Size = %d bytes\n", current->size);
@@ -101,10 +120,10 @@ void analyse(){
 
 void main(){
 
-    /*void* address = mymalloc(1024);
+    void* address = mymalloc(1024);
     void* address2 = mymalloc(3);
     analyse();
-    myfree(address);
-    myfree(address2);
-    analyse();*/
+    //myfree(address);
+    //myfree(address2);
+    analyse();
 }
