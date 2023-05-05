@@ -15,6 +15,10 @@ void* startofheap = NULL;
 chunkhead* lastchunk = NULL;
 
 int intNumPageSize(int size){
+
+    //UPDATE THIS to account for the size the user wants 
+    //not including the chunkhead
+
     if(size%PAGESIZE == 0){
         return size;
     }
@@ -27,12 +31,26 @@ void splitChunk(chunkhead* lower, int size){
     }
     chunkhead* upper;
     upper = (chunkhead*)((char*)lower+size);
-    upper->size = lower->size - intNumPageSize(size);
     lower->size = intNumPageSize(size);
+    if(lower == lastchunk){
+        brk(upper);
+        lower->next = NULL;
+    }
+    upper->size = lower->size - intNumPageSize(size);
     upper->next = lower->next;
     lower->next = (void*)upper;
     upper->prev = (void*)lower;
     upper->info = 0;
+}
+
+void mergeChunk(chunkhead* lower){
+    chunkhead* upper;
+    upper = (chunkhead*)(lower->next);
+    if(upper == lastchunk){
+        lastchunk = lower;
+    }
+    lower->size += upper->size;
+    lower->next = upper->next;
 }
 
 chunkhead* bestFit(int size){
@@ -69,38 +87,45 @@ void* mymalloc(unsigned int size){
     /*search for best empty fit for size. If not found, allocate more space at the end.*/
     current = bestFit(size);
     if(current == NULL){
-        printf("HERE FOR %d\n", size);
         current = sbrk(size);
         current->size = size;
         current->info = 1;
         current->next = NULL;
+        lastchunk->next = (void*)current;
         current->prev = (void*)lastchunk;
         lastchunk = current;
     }
     return (void*)((char*)current + sizeof(chunkhead));
 }
 
-/*void myfree(unsigned char* address){
-    chunkhead* addr = (chunkhead*)address;
-    chunkhead* chunk;
-    chunkhead* tofree;
-    chunk = (chunkhead*)(addr-1);
-    chunk->info = 0;
-    if(chunk->next != NULL && ((chunkhead*)chunk->next)->info == 0){
-        chunk->size += (((chunkhead*)chunk->next)->size + sizeof(chunkhead));
-        tofree = chunk->next;
-        chunk->next = ((chunkhead*)chunk->next)->next;
-        if(tofree != &myheap[0])
-            free(tofree);
+void myfree(void* address){
+    /*address is the part of the chunk right after the chunkhead.
+    set info to 0. If lastchunk, move prog break back.
+    If next info is 0, merge. If prev not null & info is 0, merge.*/
+    chunkhead* addr;
+    addr = (chunkhead*)((char*)address-sizeof(chunkhead));
+    addr->info = 0;
+    if(addr = lastchunk){
+        if(addr->prev == NULL){
+            startofheap = NULL;
+            lastchunk = NULL;
+            brk(addr);
+            return;
+        }
+        //move it back
+        //set prev->next to null
+        ((chunkhead*)addr->prev)->next = NULL;
+        lastchunk = (chunkhead*)addr->prev;
+        brk(addr);
+        return;
     }
-    else if(chunk->prev != NULL && ((chunkhead*)chunk->prev)->info == 0){
-        chunk->size += (((chunkhead*)chunk->prev)->size + sizeof(chunkhead));
-        tofree = chunk->prev;
-        chunk->prev = ((chunkhead*)chunk->prev)->prev;
-        if(tofree != &myheap[0])
-            free(tofree);
+    if(addr->next != NULL && ((chunkhead*)addr->next)->info == 0){
+        mergeChunk(addr);
     }
-}*/
+    if(addr->prev != NULL && ((chunkhead*)addr->prev)->info == 0){
+        mergeChunk((chunkhead*)(addr->prev));
+    }
+}
 
 void analyse(){
     int chunkCount;
